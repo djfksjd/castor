@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/castor-banner.svg" alt="CASTOR: AI 에이전트를 위한 엔지니어링 게이트" width="100%">
+<img src="assets/castor-logo.png" alt="CASTOR logo" width="160">
+
+<h1>CASTOR</h1>
 
 **AI 에이전트를 위한 엔지니어링 게이트.**
 *현실에서 버텨야 하는 작업을 위해: 애플리케이션 코드, 펌웨어, HDL, 하드웨어 설계.*

@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/castor-banner.svg" alt="CASTOR：面向 AI 智能体的工程关卡" width="100%">
+<img src="assets/castor-logo.png" alt="CASTOR logo" width="160">
+
+<h1>CASTOR</h1>
 
 **面向 AI 智能体的工程关卡。**
 *为必须在现实中站得住的工作而设：应用代码、固件、HDL 与硬件设计。*

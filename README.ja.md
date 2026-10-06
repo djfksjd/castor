@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/castor-banner.svg" alt="CASTOR: AI エージェントのためのエンジニアリングゲート" width="100%">
+<img src="assets/castor-logo.png" alt="CASTOR logo" width="160">
+
+<h1>CASTOR</h1>
 
 **AI エージェントのためのエンジニアリングゲート。**
 *現実で持ちこたえる必要がある仕事のために：アプリケーションコード、ファームウェア、HDL、ハードウェア設計。*
