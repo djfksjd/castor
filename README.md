@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/castor-banner.svg" alt="CASTOR: an engineering gate for AI agents" width="100%">
+<img src="assets/castor-logo.png" alt="CASTOR logo" width="160">
+
+<h1>CASTOR</h1>
 
 **An engineering gate for AI agents.**
 *For work that has to hold up in the real world: application code, firmware, HDL, and hardware design.*
