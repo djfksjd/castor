@@ -1,58 +1,118 @@
-# Security (ironcode reference)
+# Security (CASTOR reference)
 
-Load when the change touches user input, auth/authz, network, storage, secrets,
-queries, or anything reachable from outside the app. Prioritize findings by
-**severity × exploitability × blast radius**. Provide fixes in the *same language*
-as the vulnerable code.
+Load when the change touches outside input, authentication or authorization,
+secrets, network calls, storage, or caches of per-user data. Rank findings by
+exploitability × blast radius, and show the actual bypass path before reporting
+one. Write fixes in the language of the vulnerable code.
 
-## First pass (always)
-- **Secrets scan.** Grep the *diff* for `api[_-]?key`, `secret`, `password`,
-  `token`, `private_key`, connection strings, `-----BEGIN`. For history, use a
-  dedicated scanner (gitleaks/trufflehog) rather than grepping `git log -p` —
-  faster, fewer false positives, and don't re-print any secret you find. A
-  hardcoded or committed secret is 🔴 **and** must be rotated — flagging it is
-  not enough.
-- **Dependency audit** when deps changed: `npm audit` / `pip-audit` / `cargo audit` /
-  `govulncheck` / `osv-scanner` (covers pub.dev and most ecosystems). Report CVE +
-  fix version. (`flutter pub outdated` shows staleness, not vulnerabilities.)
+The checks below are selected because they change review decisions. They track
+the categories of the OWASP Top 10 (2025) without reproducing it.
 
-## OWASP Top 10 (2021) — what to check
-- **A01 Broken Access Control.** Every endpoint/route/query authorizes the *caller*,
-  not just authenticates. Object-level checks (can THIS user touch THIS row?). For
-  Supabase/Postgres: **RLS enabled on every client-reachable table** with policies
-  that actually scope by `auth.uid()`; client-side filtering is not access control.
-  CORS not `*` for credentialed requests.
-- **A02 Cryptographic Failures.** TLS everywhere; no MD5/SHA1 for passwords (use
-  bcrypt/argon2/scrypt); secure RNG (not `Math.random`/`Random()` for tokens);
-  no secrets in logs.
-- **A03 Injection.** Parameterized queries / prepared statements / query builders —
-  never string-concatenate user input into SQL, shell, or `eval`. For XSS: encode
-  output for its context (HTML/attribute/JS/URL) by default; HTML-sanitize only
-  when you deliberately render user-supplied rich HTML. Validate redirect targets
-  and file paths (path traversal `../`).
-- **A04 Insecure Design.** Rate-limit auth and expensive endpoints. No security-by-obscurity.
-- **A05 Misconfiguration.** Debug off in prod; default creds removed; verbose errors
-  not leaked to clients; storage buckets not public unless intended.
-- **A06 Vulnerable & Outdated Components.** The dependency audit above, plus:
-  pin versions (lockfile committed), remove unused deps, track EOL runtimes.
-- **A07 Auth Failures.** Strong session/JWT validation (verify signature, exp, aud);
-  rotate/expire tokens; no user enumeration via different error messages.
-- **A08 Integrity.** Verify webhook signatures; never feed untrusted data to
-  native/unsafe deserializers (pickle, Java serialization, `eval`-style parsers) —
-  parse with a schema-validated format (JSON + schema validation) instead.
-- **A09 Logging.** Log security events; never log secrets/PII/tokens.
-- **A10 SSRF.** Validate/allowlist any URL the server fetches on user input.
+## Access control (check first; it is the most common serious defect)
 
-## Client-app specifics (mobile/Flutter)
-- No secrets baked into the binary — anything shipped to the client is public.
-  Service-role keys stay server-side (edge functions), only the anon/publishable key ships.
-- Validate/escape deep-link and intent parameters.
-- Sensitive data in secure storage (Keychain/Keystore), not plain prefs.
-- Authorization decisions belong on the server, not in the UI.
+Build the matrix the change implies: **principal × operation × resource**.
 
-## Reporting a security finding
+- Every route, function and query authorizes the caller for *this* object, not
+  merely "is logged in". Try the request as user B against user A's id.
+- **Row-level security / database policies:** evaluate the effective result,
+  not the presence of an expression. Check grants, every applicable policy per
+  operation (select, insert, update, delete), views and functions that run
+  with elevated rights, and privileged keys or service roles that bypass
+  policies. Public-read, membership and role policies are legitimate; a policy
+  that mentions the user id is not automatically correct.
+- **Authorization across layers:** follow the principal through fetch, cache,
+  transformation and response. A shared cache, CDN, memoized server value or
+  service account can serve user A's data to user B while the database rules
+  are perfect. Check cache keys include tenant and user, and that logout or a
+  permission change invalidates them.
+- **Mass assignment:** request bodies bound straight onto models let a caller
+  set `role`, `owner_id` or `price`. Allowlist writable fields.
+- Client-side filtering and hidden UI are not access control.
+
+## Injection and output handling
+
+- Queries receive untrusted *values* only as bound parameters, never by string
+  concatenation. Identifiers, operators and sort directions cannot be bound:
+  choose them from a fixed allowlist.
+- External commands are run with an argument array, not through a shell, and
+  arguments that could begin with `-` are guarded against option injection.
+- XSS: encode output for its context by default; sanitize only when rich
+  user HTML is deliberately rendered.
+- Paths and redirect targets derived from input are validated (traversal,
+  open redirect).
+- Never feed untrusted data to unsafe deserializers or `eval`-style parsers.
+
+## Authentication and sessions
+
+- Tokens: verify signature, expiry, audience and issuer, and pin the accepted
+  algorithms. Reject `none` and algorithm confusion.
+- Cookie-authenticated state changes need CSRF protection (SameSite plus a
+  token or origin check as the framework provides).
+- No user enumeration through differing errors or timing; rate-limit login,
+  reset and other expensive or guessable endpoints.
+- Passwords use a slow salted hash (argon2, scrypt, bcrypt). Security tokens
+  come from a cryptographic RNG.
+
+## Outbound requests and callbacks
+
+- **SSRF:** a URL the server fetches on user input is allowlisted by
+  destination, checked after DNS resolution and after every redirect, and
+  cannot reach internal ranges or metadata endpoints.
+- **Webhooks:** verify the signature over the raw body, reject stale
+  timestamps, and dedupe by event id so a replay is harmless.
+
+## Secrets and configuration
+
+- Scan the diff for credentials (keys, tokens, passwords, connection strings,
+  private-key headers). A match is a candidate: confirm it is a live credential
+  rather than a public key, placeholder or test fixture. Use a dedicated
+  scanner for history, and never re-print a secret you find.
+- A confirmed exposed credential is 🔴. Recommend rotation; do not rotate or
+  revoke anything yourself without authorization.
+- Anything shipped to a client (web bundle, mobile binary, firmware image) is
+  public. Privileged keys stay server-side.
+- Debug modes, default credentials, verbose errors, permissive CORS with
+  credentials, and public storage buckets are checked when configuration
+  changes.
+- Secrets, tokens and personal data never go to logs, analytics or error
+  reports.
+
+## Dependencies
+
+When dependencies change, run the ecosystem's audit (`npm audit`, `pip-audit`,
+`cargo audit`, `govulncheck`, `osv-scanner`). An advisory is a candidate:
+confirm the affected version range and that the vulnerable code path is
+reachable before assigning severity. Confirm new packages exist under the
+exact name and publisher intended.
+
+## Applications that call a language model
+
+When the change passes untrusted text to a model or acts on model output:
+
+- Retrieved documents, web pages, tool results and user uploads can carry
+  instructions. They must not be able to trigger privileged tools or data
+  access the end user does not have.
+- Tools run with the *user's* authority, least privilege, and confirmation for
+  destructive or outward-facing actions.
+- Model output is untrusted input to whatever consumes it (HTML, SQL, shell,
+  file paths).
+- Secrets and other users' data stay out of prompts and logs.
+
+## Client and device specifics
+
+- Sensitive data lives in the platform's secure storage, not plain
+  preferences.
+- Deep-link and intent parameters are validated like any other input.
+- Device-side concerns (debug ports, read-out protection, secure boot, signed
+  updates) are in `domains/firmware.md`.
+
+## Finding shape
+
 ```
-🔴 lib/x.dart:88 — User input concatenated into a Supabase filter (injection).
-   Exploitability: high (any client). Blast radius: full table read.
-   Fix: use .eq('col', value) / parameterized filter instead of string interpolation.
+F1 🔴 api/invoices.ts:27 — any authenticated user requests /invoices/:id with
+   another account's id → handler loads by id with no owner check → reads
+   that account's invoice (amounts, address).
+   Evidence: static trace; query at :27 filters on id only, and the route's
+   middleware (router.ts:12) checks authentication only.
+   Fix: add `and account_id = $session.accountId` and return 404 on no row.
 ```

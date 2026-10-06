@@ -1,83 +1,99 @@
-# Data access & backend cost (ironcode reference)
+# Data access and backend cost (CASTOR reference)
 
-Load when the change reads/writes a database, calls an API, or renders a list. Goal:
-correct data **and** minimal, bounded, cheap requests. Excessive queries = real money.
+Load when the change reads or writes a database, calls an API, or renders a
+list of data. The goal is correct data with bounded, proportionate work. Cost
+defects are judged by workload: the same loop is harmless over a five-row
+config table and a bug over user data.
 
-## The cost defects (treat as bugs when the data grows with usage)
-- **N+1 queries.** A query inside a loop / per-list-item / per-render. Fix: batch with
-  `in (...)`, a join, or a single embedded select naming the columns you need
-  (Supabase `select('id, title, rel(id, name)')`). A loop over a small, bounded
-  config table is a nit, not a defect — say which case you're in.
-  *Smell: `for (item in list) { await db... }`.*
-- **Unbounded fetch.** A list query with no `limit`/`range` on user-growing data.
-  Paginate those; small bounded reference data (country codes, roles, settings)
-  may be fetched whole as a deliberate, stated decision. Use keyset/cursor
-  pagination over `OFFSET` for large/scrolling sets — `OFFSET` scans and skips,
-  getting slower as you go. A keyset cursor needs a **unique, stable sort key**:
-  order by `(created_at, id)` and cursor on both (tie-breaker), not on a
-  non-unique column alone — otherwise rows are skipped or duplicated at ties.
-- **Over-fetching.** `select *` when you need 3 columns; fetching rows to count them
-  (use a count query / `count: 'exact', head: true`); fetching a whole list to find one.
-- **Refetching what you have.** Re-querying on every rebuild/render instead of caching;
-  no dedupe of identical in-flight requests; not using already-loaded data.
-- **Chatty round-trips.** Many small sequential awaits that could be one query, or —
-  when they must stay separate — a *bounded* parallel batch (`Future.wait`/
-  `Promise.all` over a capped set). Parallelism is not batching: it still costs one
-  connection/request each, so cap it and respect rate limits.
-- **Missing indexes.** Filtering/ordering/joining on an unindexed column → full scan.
-  Recommend an index for the exact `where`/`order by` the code runs.
-- **Write amplification.** Per-keystroke writes (debounce them); per-frame persistence;
-  re-subscribing on every build.
+## Cost defects
 
-## Pagination / infinite scroll — the correct pattern
-- Page size 20–50 as a starting point — tune to payload size, latency, and memory;
-  never "load all" on user-growing data.
-- Keyset cursor (last seen sort key + unique tie-breaker), not OFFSET, for
-  infinite scroll.
-- Track `hasMore`, `isLoading`, and the cursor; **guard against duplicate page
-  requests** (don't fire the next page while one is in flight or already at end).
-- Trigger the next page *before* the user hits the absolute bottom (prefetch threshold),
-  not on a button only.
-- Show distinct empty / loading / end-of-list / error states.
-- Append to the existing list; don't refetch page 1..N to add page N+1.
+Each is a finding only with a plausible workload that makes it hurt.
 
-## Realtime / subscriptions
-- Subscribe with a filter (only the rows you need), not the whole table.
-- One channel, cleaned up on teardown (see `resource-safety.md`).
-- Choose realtime vs polling by change frequency: fast-changing shared state →
-  realtime; slow-changing data → a sane polling interval is simpler and cheaper
-  than held-open connections. Either way, stop it off-screen.
+- **N+1.** A query or request per item of a collection that grows with usage.
+  Batch it (`in (...)`, a join, an embedded select naming the columns needed).
+- **Unbounded read.** A list read with no limit on data that grows. Page it.
+  Small bounded reference data may be read whole as a stated decision.
+- **Over-fetching.** Whole rows for a few columns on a hot path; loading rows
+  to count them; loading a list to find one item.
+- **Refetching what is held.** Re-querying on every render or rebuild; no
+  dedupe of identical in-flight requests.
+- **Chatty round-trips.** Sequential awaits that could be one query. When they
+  must stay separate, a *bounded* parallel batch; parallelism still costs one
+  request each, so cap it and respect rate limits.
+- **Write amplification.** A write per keystroke or frame; re-subscribing on
+  every render.
 
-## DB ↔ code consistency (verify against the real schema, don't assume)
-Code that queries a column/table that doesn't exist, or maps a result to a model with the
-wrong type/nullability, fails at runtime — not compile time. Check the code against the
-**actual** schema, not your memory of it.
-- **Tables & columns exist** with the names/casing the query uses. Introspect with
-  whatever schema source is available: `information_schema.columns`, an ORM/schema
-  file, migrations, or generated types. Don't trust the string in the code.
-- **Types & nullability match the model.** A nullable DB column mapped to a non-null field
-  crashes on the first null row; an int parsed as String, a timestamp as a plain string,
-  enum values not in the DB check constraint — all 🔴/🟠.
-- **Migrations cover the change.** New column/table used by code must have a committed
-  migration; no schema drift between envs. Generated types regenerated after a migration.
-- **RLS/permission assumptions hold.** The query assumes the caller can see/write these
-  rows — confirm a policy actually grants that (see `security.md`). A select that silently
-  returns 0 rows because RLS blocks it is a bug that looks like "no data".
-- **Foreign keys / relations** used in embedded selects/joins actually exist in the schema.
-- **Indexes back the filters** the code runs (see "Missing indexes" above).
-- After a schema change, regenerate types/models and re-run the queries to confirm.
+Do not prescribe a cache as a reflex. A cache needs a freshness rule, a key
+that partitions by user or tenant (see `security.md`), and eviction.
+
+## Pagination
+
+- Keyset (cursor) pagination for large or scrolling sets; offset pagination
+  rescans skipped rows and slows with depth.
+- The cursor needs a **unique, stable order**: sort by `(created_at, id)` and
+  carry both. Ordering on a non-unique or nullable column alone skips or
+  repeats rows at ties.
+- Track cursor, has-more and in-flight state; never request the next page
+  while one is loading or after the end.
+- Append the new page; do not refetch earlier pages.
+- Show distinct empty, loading, end and error states.
+- Keep the interaction the product asked for. Infinite scroll, a "load more"
+  button and numbered pages are all valid; exports stream in bounded chunks.
+
+## Counts
+
+Choose what the requirement needs: an exact count, an estimate, an existence
+check, or no count. An exact count over a large filtered set is itself
+expensive even when no rows are transferred.
+
+## Indexes
+
+Report a missing index only with the mechanism: the query, the table's
+realistic size, the existing indexes (including composite ones that already
+cover the filter), and the resulting plan. A sequential scan is correct for
+small tables and low-selectivity filters, and every index taxes writes.
+
+## Realtime versus polling
+
+Subscribe with a filter, not to a whole table. Fast-changing shared state
+suits realtime; slow-changing data is often cheaper polled at a sane interval.
+Tie the lifetime to whoever needs the data: usually the screen, sometimes a
+deliberate background sync.
+
+## Code ↔ schema agreement
+
+Check against the real schema source (migrations, schema file, introspection,
+generated types), not memory.
+
+- Tables, columns and relations the code names exist, with that spelling.
+- Compare the chain: database constraint → transport representation →
+  static or generated type → runtime validation → what the consumer assumes.
+  Report a demonstrated mismatch (a nullable column read as non-null, an enum
+  value the constraint rejects). A different representation alone is not a
+  defect: a timestamp arriving as an ISO string is normal for JSON.
+- A schema change the code depends on has a committed migration. Regenerate
+  types when the project uses generation.
+- The caller is actually permitted to read or write the rows. A read that
+  returns nothing because a policy blocks it looks like "no data".
 
 ## Verification
-- Count the queries a single user action triggers — should be O(1), not O(rows).
-- For SQL, get the query plan (`EXPLAIN`) on representative data and check the
-  index is *used effectively* (row estimates, selectivity) — an index appearing
-  in the plan is not proof by itself, and every index taxes writes.
-- Confirm list screens cap rows and that scrolling fetches incrementally, not all-at-once.
+
+- Count the queries or requests per bounded unit of work (one page, one
+  action) and look for avoidable per-item round-trips. Exports and bulk jobs
+  legitimately issue more requests as total data grows, in bounded chunks.
+- For SQL on a T3 path, read the plan (`EXPLAIN`, with `ANALYZE` on
+  non-production data) and check the estimated and actual rows, not merely
+  that an index name appears.
+- Confirm a list caps its rows and fetches incrementally.
 
 ## Finding shape
+
 ```
-🔴 orders_controller.ts:120 — fetches all orders (no limit), grows unbounded and
-   re-runs every rebuild. Fix: keyset pagination (`where (created_at, id) <
-   (cursor) order by created_at desc, id desc limit 30`) + cache; load next page
-   on scroll threshold with an in-flight guard.
+F1 🔴 orders/list.ts:120 — an account with 40k orders opens the list → query
+   has no limit and re-runs on every re-render → multi-MB response and a full
+   scan per render.
+   Evidence: static trace; query at :120 has no limit, called from a render
+   effect with no dependency guard (:98).
+   Fix: keyset page of 30 on (created_at desc, id desc), fetch once per
+   cursor with an in-flight guard.
 ```
