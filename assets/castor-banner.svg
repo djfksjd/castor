@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="CASTOR: an engineering gate for AI agents">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14110f"/>
+      <stop offset="1" stop-color="#2a1f18"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f6b25c"/>
+      <stop offset="1" stop-color="#e2783a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <!-- dam: stacked logs holding a waterline -->
+  <g opacity="0.9">
+    <path d="M0 292 C 200 272, 400 312, 600 292 S 1000 272, 1200 292 V360 H0 Z" fill="#1d3a4a"/>
+    <path d="M0 310 C 200 292, 400 328, 600 310 S 1000 292, 1200 310 V360 H0 Z" fill="#17303d"/>
+  </g>
+  <g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="80" y="150" font-size="112" font-weight="800" letter-spacing="14" fill="url(#amber)">CASTOR</text>
+    <text x="84" y="200" font-size="27" font-weight="500" fill="#f3e9df">An engineering gate for AI agents: code, firmware, HDL, hardware.</text>
+    <g font-size="17" font-weight="600" fill="#f3e9df">
+      <g transform="translate(84 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">C</tspan>  Claims</text>
+      </g>
+      <g transform="translate(246 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">A</tspan>  Analyze</text>
+      </g>
+      <g transform="translate(408 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">S</tspan>  Spec</text>
+      </g>
+      <g transform="translate(570 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">T</tspan>  Trust</text>
+      </g>
+      <g transform="translate(732 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">O</tspan>  Overruns</text>
+      </g>
+      <g transform="translate(894 228)">
+        <rect width="150" height="38" rx="19" fill="#3a2a20" stroke="#6b4a33"/>
+        <text x="18" y="25"><tspan fill="#f6b25c">R</tspan>  Reversible</text>
+      </g>
+    </g>
+  </g>
+</svg>
